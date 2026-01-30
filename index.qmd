@@ -186,7 +186,7 @@ ds["ensemble"][:]
 *What years does the data cover?*
 *How many ensemble members are in the BRICK projections?*
 
-*Replace this text with your answer.*
+The data covers the years 2000 to 2100 (101 years future projections including the endpoints). There are 1000 ensemble members in the BRICK dataset.
 :::
 
 
@@ -213,7 +213,7 @@ dims(noaa_slr)
 Now let's extract the "intermediate" scenario (index 3):
 
 ```{julia}
-# Your code here
+noaa_slr[noaa_scenario=3]
 ```
 
 
@@ -231,7 +231,7 @@ This gives us a 2D array (time × ensemble).
 Let's compute the median across ensemble members for each year:
 
 ```{julia}
-# Your code here
+rcp85_slr
 ```
 
 ::: {.callout-tip appearance="simple" icon=false title="Exercise"}
