@@ -1,0 +1,603 @@
+---
+title: "Lab 3: Sea-Level Rise Scenarios and Uncertainty"
+subtitle: "CEVE 421/521"
+date: 2026-01-30
+engine: julia
+
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-block-bg: "#f8f8f8"
+    code-block-border-left: "#e1e4e5"
+    theme:
+      - simplex
+      - _assets/sass/custom.scss
+    number-sections: true
+    fig-format: svg
+  typst:
+    fontsize: 11pt
+    margin:
+      x: 1in
+      y: 1in
+    number-sections: true
+    fig-format: svg
+
+execute:
+  exeflags: ["+1.12", "--project=@.", "--threads=auto"]
+  cache: true
+  freeze: auto
+
+code-overflow: wrap
+code-line-numbers: false
+code-block-font-size: "0.85em"
+---
+
+## Overview
+
+Sea-level rise projections vary widely depending on future emissions and our understanding of ice sheet dynamics.
+This lab explores two different approaches to characterizing this uncertainty:
+
+1. **NOAA Scenarios:** Deterministic scenarios spanning a range of plausible futures (Low to High)
+2. **BRICK Model:** Probabilistic projections with ensemble members representing parametric uncertainty
+
+**Learning Objectives:**
+
+1. Work with NetCDF files using YAXArrays (indexing, slicing, computing statistics)
+2. Understand the difference between scenario-based and probabilistic projections
+3. Compare sea-level rise projections across different emissions pathways (RCPs)
+4. Interpret uncertainty ranges and how they grow with planning horizon
+5. Apply these skills to real climate projection data for decision-making
+
+
+## Before Lab
+
+**Complete these steps BEFORE coming to lab:**
+
+1. **Accept the GitHub Classroom assignment** (link on Canvas)
+   - This creates your personal copy of the lab repository
+
+2. **Clone your repository:**
+   ```bash
+   git clone https://github.com/CEVE-421-521/lab-03-S26-yourusername.git
+   cd lab-03-S26-yourusername
+   ```
+
+3. **Install and precompile packages** (this takes 5-10 minutes):
+   ```bash
+   julia --project=. -e 'using Pkg; Pkg.instantiate()'
+   ```
+   This downloads all required packages and compiles them.
+   **Do this before lab** so you're ready to start working immediately.
+
+4. **Open the notebook:**
+   - In VS Code: Open the folder, then open `index.qmd`
+   - Or use Quarto preview: `quarto preview index.qmd`
+
+5. **Verify setup**: Run the first code cell under "Package Setup" to ensure packages load without errors.
+
+::: {.callout-warning}
+**Troubleshooting:**
+
+- If `Pkg.instantiate()` fails, check your internet connection
+- If packages won't load, try restarting Julia
+- If you get "package not found" errors, make sure you're in the lab directory when running Julia
+:::
+
+
+## Setup
+
+### Why Sewells Point, Norfolk, VA?
+
+Norfolk, Virginia is one of the most vulnerable cities to sea-level rise in the United States.
+Sewells Point is a tide gauge location at the world's largest naval base (Naval Station Norfolk).
+
+Why is Norfolk especially vulnerable?
+
+- **Land subsidence:** The land is sinking due to groundwater extraction and post-glacial adjustment
+- **Low elevation:** Much of the city is only a few feet above current sea level
+- **Military significance:** Naval Station Norfolk is the world's largest naval base
+- **Growing flood frequency:** The city already experiences regular "sunny day flooding"
+
+All sea-level rise projections in this lab are for Sewells Point, measured in meters above the year 2000 baseline.
+
+### Package Setup
+
+```{julia}
+#| output: false
+dir_name = dirname(@__FILE__)
+using Pkg
+Pkg.activate(dir_name)
+if !isfile(joinpath(dir_name, "Manifest.toml"))
+    Pkg.instantiate()
+end
+```
+
+```{julia}
+#| output: false
+using CairoMakie  # <1>
+using YAXArrays  # <2>
+using DimensionalData: dims  # <3>
+using NetCDF      # <4>
+using Statistics  # <5>
+
+include("sea_level_data.jl")  # <6>
+```
+1. For creating figures
+2. For working with multidimensional labeled arrays
+3. For working with dimensions
+4. For reading NetCDF data files
+5. For computing quantiles and means
+6. Helper functions for convenient data access (we'll build up to these)
+
+
+## Working with Climate Data
+
+### What is NetCDF?
+
+NetCDF (Network Common Data Form) is the standard file format for climate and earth science data.
+It stores multidimensional arrays with labeled dimensions and metadata.
+
+Think of NetCDF as a container that holds:
+
+- **Data arrays** (e.g., sea level rise values)
+- **Dimensions** (e.g., time, ensemble members, scenarios)
+- **Coordinates** (e.g., specific years, RCP names)
+- **Metadata** (e.g., units, descriptions, data sources)
+
+### Loading a NetCDF File
+
+Let's open our sea-level data file and explore its structure:
+
+```{julia}
+data_path = joinpath(@__DIR__, "data", "sea_level_projections.nc")
+ds = open_dataset(data_path)
+```
+
+The dataset contains multiple variables.
+Let's see what's inside:
+
+```{julia}
+ds
+```
+
+You should see two main data variables:
+
+- `brick_slr`: BRICK model projections (3D: time × ensemble × RCP)
+- `noaa_slr`: NOAA scenarios (2D: time × scenario)
+
+### Exploring Dimensions and Coordinates
+
+Let's examine the dimensions:
+
+```{julia}
+# What are the time points?
+ds["time"][:]
+```
+
+```{julia}
+# How many ensemble members does BRICK have?
+ds["ensemble"][:]
+```
+
+::: {.callout-tip appearance="simple" icon=false title="Your Response"}
+*Look at the output above.*
+
+*What years does the data cover?*
+*How many ensemble members are in the BRICK projections?*
+
+*Replace this text with your answer.*
+:::
+
+
+### Indexing and Slicing
+
+YAXArrays lets us select data by dimension names.
+Let's extract NOAA projections:
+
+```{julia}
+noaa_slr = ds["noaa_slr"]
+```
+
+This is a 2D array with dimensions (time, scenario).
+Let's look at its size and dimensions:
+
+```{julia}
+size(noaa_slr)
+```
+
+```{julia}
+dims(noaa_slr)
+```
+
+Now let's extract the "intermediate" scenario (index 3):
+
+```{julia}
+# Your code here
+```
+
+
+### Computing Statistics
+
+Let's work with the BRICK data, which has an ensemble dimension.
+First, extract the RCP 8.5 scenario (index 4):
+
+```{julia}
+brick_slr = ds["brick_slr"]
+rcp85_slr = brick_slr[rcp=4]  # 4th RCP is RCP 8.5
+```
+
+This gives us a 2D array (time × ensemble).
+Let's compute the median across ensemble members for each year:
+
+```{julia}
+# Your code here
+```
+
+::: {.callout-tip appearance="simple" icon=false title="Exercise"}
+*Compute the 95th percentile of sea-level rise across ensemble members for RCP 8.5.*
+
+*Hint: Use `mapslices` with a function that computes the 95th percentile.*
+*You can use an anonymous function: `x -> quantile(x, 0.95)`*
+*Don't forget to use `dropdims` to remove the singleton ensemble dimension!*
+:::
+
+```{julia}
+# Your code here
+# Your code here
+```
+
+
+### Quick Visualization
+
+Now let's visualize what we just computed.
+We'll use the helper functions to make plotting easier:
+
+```{julia}
+#| label: fig-first-look
+#| fig-cap: "First look at sea-level rise projections: comparing NOAA and BRICK data."
+let
+    # Load data using helper functions (easier than raw YAXArrays for plotting)
+    noaa_data = load_noaa_scenarios()
+    brick_data = load_brick_projections()
+
+    # Get specific scenarios
+    noaa_int = get_noaa_scenario(noaa_data, "intermediate")
+    brick_rcp85 = get_brick_scenario(brick_data, "rcp85")
+    quantiles = brick_quantiles(brick_rcp85, [0.50, 0.95])
+
+    fig = Figure(size=(700, 400))
+    ax = Axis(
+        fig[1, 1];
+        xlabel="Year",
+        ylabel="Sea Level Rise (meters)",
+        title="Sea-Level Rise: First Look"
+    )
+
+    # NOAA intermediate scenario
+    lines!(ax, noaa_data.years, noaa_int; label="NOAA Intermediate", color=:blue, linewidth=2)
+
+    # BRICK RCP 8.5 median and 95th percentile
+    lines!(ax, brick_data.years, quantiles[:, 1]; label="BRICK RCP 8.5 Median", color=:red, linewidth=2)
+    lines!(ax, brick_data.years, quantiles[:, 2]; label="BRICK RCP 8.5 (95th percentile)",
+           color=:red, linewidth=2, linestyle=:dash)
+
+    axislegend(ax; position=:lt)
+    fig
+end
+```
+
+::: {.callout-tip appearance="simple" icon=false title="Your Response"}
+*What do you notice about the relationship between the NOAA Intermediate scenario and the BRICK RCP 8.5 projections?*
+
+*Replace this text with your observations.*
+:::
+
+
+## NOAA Sea-Level Rise Scenarios
+
+NOAA provides deterministic scenarios that span a range of plausible futures.
+These are NOT probabilistic projections --- they don't have probabilities attached.
+Instead, they represent "what if" storylines.
+
+Now that you've learned the basics of working with NetCDF and YAXArrays, let's use some helper functions to make our analysis more convenient.
+
+### Loading the Data
+
+```{julia}
+noaa_data = load_noaa_scenarios()
+println("NOAA Scenarios: $(noaa_data.scenarios)")
+println("Years: $(noaa_data.years[1]) to $(noaa_data.years[end])")
+```
+
+### Visualizing the Scenarios
+
+```{julia}
+#| label: fig-noaa-scenarios
+#| fig-cap: "NOAA sea-level rise scenarios for Sewells Point, Norfolk, VA. Each scenario represents a plausible future, not a probability."
+let
+    fig = Figure(size=(700, 450))
+    ax = Axis(
+        fig[1, 1];
+        xlabel="Year",
+        ylabel="Sea Level Rise (meters)",
+        title="NOAA Sea-Level Rise Scenarios for Sewells Point, VA"
+    )
+
+    colors = [:green, :blue, :gold, :orange, :red]
+    labels = ["Low", "Intermediate-Low", "Intermediate", "Intermediate-High", "High"]
+
+    for (i, scenario) in enumerate(noaa_data.scenarios)
+        slr = get_noaa_scenario(noaa_data, scenario)
+        lines!(ax, noaa_data.years, slr; color=colors[i], linewidth=2, label=labels[i])
+    end
+
+    axislegend(ax; position=:lt)
+    fig
+end
+```
+
+### Interpreting the Scenarios
+
+::: {.callout-tip appearance="simple" icon=false title="Your Response"}
+*Look at @fig-noaa-scenarios. By 2100, the "High" scenario projects about 2.5 meters of sea-level rise, while "Low" projects only 0.3 meters.*
+
+*If you were advising a city planner, how would you explain what these scenarios mean?
+Why isn't there a probability attached to each scenario?*
+
+*Replace this text with your answer.*
+:::
+
+
+## BRICK Model Projections
+
+The BRICK model (Building blocks for Relevant Ice and Climate Knowledge) takes a different approach.
+For each emissions pathway (RCP), it generates an **ensemble** of projections representing parametric uncertainty.
+
+### Loading BRICK Data
+
+```{julia}
+brick_data = load_brick_projections()
+println("RCP Scenarios: $(brick_data.rcps)")
+println("Ensemble members: $(length(brick_data.ensemble))")
+println("Years: $(brick_data.years[1]) to $(brick_data.years[end])")
+```
+
+### Visualizing a Single RCP
+
+Let's look at RCP 8.5 (high emissions) first:
+
+```{julia}
+#| label: fig-brick-rcp85
+#| fig-cap: "BRICK sea-level rise projections for RCP 8.5 at Sewells Point. Gray lines show individual ensemble members; colored lines show quantiles."
+let
+    rcp85 = get_brick_scenario(brick_data, "rcp85")
+    quantiles = brick_quantiles(rcp85, [0.05, 0.50, 0.95])
+
+    fig = Figure(size=(700, 450))
+    ax = Axis(
+        fig[1, 1];
+        xlabel="Year",
+        ylabel="Sea Level Rise (meters)",
+        title="BRICK RCP 8.5 Projections ($(length(brick_data.ensemble)) ensemble members)"
+    )
+
+    # Plot a sample of ensemble members
+    for i in 1:50:length(brick_data.ensemble)
+        lines!(ax, brick_data.years, rcp85[:, i]; color=(:gray, 0.2), linewidth=0.5)
+    end
+
+    # Plot quantiles
+    lines!(ax, brick_data.years, quantiles[:, 1]; color=:blue, linewidth=2, linestyle=:dash, label="5th percentile")
+    lines!(ax, brick_data.years, quantiles[:, 2]; color=:red, linewidth=2, label="Median")
+    lines!(ax, brick_data.years, quantiles[:, 3]; color=:blue, linewidth=2, linestyle=:dash, label="95th percentile")
+
+    axislegend(ax; position=:lt)
+    fig
+end
+```
+
+### Comparing RCP Scenarios
+
+Now let's compare projections across all four RCP scenarios:
+
+```{julia}
+#| label: fig-brick-all-rcps
+#| fig-cap: "BRICK projections across all RCP scenarios. Shaded regions show 5th-95th percentile ranges; lines show medians."
+let
+    fig = Figure(size=(700, 450))
+    ax = Axis(
+        fig[1, 1];
+        xlabel="Year",
+        ylabel="Sea Level Rise (meters)",
+        title="BRICK Projections by RCP Scenario"
+    )
+
+    colors = Dict("rcp26" => :green, "rcp45" => :blue, "rcp60" => :orange, "rcp85" => :red)
+    labels = Dict("rcp26" => "RCP 2.6", "rcp45" => "RCP 4.5", "rcp60" => "RCP 6.0", "rcp85" => "RCP 8.5")
+
+    for rcp in brick_data.rcps
+        scenario_data = get_brick_scenario(brick_data, rcp)
+        quantiles = brick_quantiles(scenario_data, [0.05, 0.50, 0.95])
+
+        # Shaded uncertainty range
+        band!(ax, brick_data.years, quantiles[:, 1], quantiles[:, 3];
+              color=(colors[rcp], 0.2))
+
+        # Median line
+        lines!(ax, brick_data.years, quantiles[:, 2];
+               color=colors[rcp], linewidth=2, label=labels[rcp])
+    end
+
+    axislegend(ax; position=:lt)
+    fig
+end
+```
+
+### Understanding the Spread
+
+Let's look at the distribution of projections at 2050 and 2100 for RCP 8.5:
+
+```{julia}
+#| label: fig-brick-distributions
+#| fig-cap: "Distribution of sea-level rise projections at 2050 and 2100 for RCP 8.5."
+let
+    slr_2050 = slr_at_year(brick_data, "rcp85", 2050)
+    slr_2100 = slr_at_year(brick_data, "rcp85", 2100)
+
+    fig = Figure(size=(700, 350))
+
+    ax1 = Axis(fig[1, 1]; xlabel="Sea Level Rise (meters)", ylabel="Density", title="2050")
+    hist!(ax1, slr_2050; bins=30, normalization=:pdf, color=(:red, 0.6))
+    vlines!(ax1, [median(slr_2050)]; color=:black, linewidth=2, linestyle=:dash, label="Median")
+
+    ax2 = Axis(fig[1, 2]; xlabel="Sea Level Rise (meters)", ylabel="Density", title="2100")
+    hist!(ax2, slr_2100; bins=30, normalization=:pdf, color=(:red, 0.6))
+    vlines!(ax2, [median(slr_2100)]; color=:black, linewidth=2, linestyle=:dash)
+
+    fig
+end
+```
+
+::: {.callout-tip appearance="simple" icon=false title="Your Response"}
+*Compare the distributions at 2050 and 2100 in @fig-brick-distributions.*
+
+*How does the spread (uncertainty) change as we project further into the future?
+Why does this happen?*
+
+*Replace this text with your answer.*
+:::
+
+
+## Comparing Approaches
+
+Now let's overlay the NOAA scenarios and BRICK projections to see how they compare:
+
+```{julia}
+#| label: fig-comparison
+#| fig-cap: "Comparison of NOAA scenarios (dashed lines) and BRICK RCP 8.5 projections (shaded region with solid median)."
+let
+    rcp85 = get_brick_scenario(brick_data, "rcp85")
+    quantiles = brick_quantiles(rcp85, [0.05, 0.50, 0.95])
+
+    fig = Figure(size=(700, 500))
+    ax = Axis(
+        fig[1, 1];
+        xlabel="Year",
+        ylabel="Sea Level Rise (meters)",
+        title="NOAA Scenarios vs BRICK RCP 8.5"
+    )
+
+    # BRICK uncertainty range
+    band!(ax, brick_data.years, quantiles[:, 1], quantiles[:, 3];
+          color=(:red, 0.2), label="BRICK 90% range")
+    lines!(ax, brick_data.years, quantiles[:, 2];
+           color=:red, linewidth=2, label="BRICK median")
+
+    # NOAA scenarios
+    noaa_colors = [:green, :blue, :gold, :orange, :purple]
+    noaa_labels = ["NOAA Low", "NOAA Int-Low", "NOAA Int", "NOAA Int-High", "NOAA High"]
+
+    for (i, scenario) in enumerate(noaa_data.scenarios)
+        slr = get_noaa_scenario(noaa_data, scenario)
+        lines!(ax, noaa_data.years, slr;
+               color=noaa_colors[i], linewidth=2, linestyle=:dash, label=noaa_labels[i])
+    end
+
+    axislegend(ax; position=:lt, nbanks=2)
+    fig
+end
+```
+
+### Key Observations
+
+::: {.callout-tip appearance="simple" icon=false title="Your Response"}
+*Looking at @fig-comparison, answer these questions:*
+
+1. *Where does the NOAA "High" scenario fall relative to the BRICK 90% range?*
+2. *What does this tell us about the relationship between these two approaches?*
+3. *The BRICK ensemble spread represents uncertainty in model parameters. What kinds of uncertainties might this capture?*
+4. *The choice between NOAA scenarios represents different possible futures. Why can't we assign probabilities to these scenarios?*
+
+*Replace this text with your answers.*
+:::
+
+
+## Reflection
+
+### Connecting to Lecture Concepts
+
+Think back to this week's lectures on climate scenarios and projections.
+
+::: {.callout-tip appearance="simple" icon=false title="Question 1"}
+*In the context of sea-level rise projections:*
+
+- *What is the difference between a scenario (like NOAA's "High" scenario) and a projection (like BRICK's probabilistic ensemble)?*
+- *Why do climate scientists use scenarios instead of making single predictions about the future?*
+
+*Replace this text with your answer.*
+:::
+
+
+### Planning Horizons
+
+::: {.callout-tip appearance="simple" icon=false title="Question 2"}
+*Consider two planning decisions:*
+
+1. *Designing a seawall that must last until 2050*
+2. *Zoning restrictions for development in flood-prone areas (relevant through 2100 and beyond)*
+
+*How would you use these projections differently for each decision?
+Which approach (NOAA scenarios or BRICK probabilistic) would you prefer for each, and why?*
+
+*Replace this text with your answer.*
+:::
+
+
+### Synthesis
+
+::: {.callout-tip appearance="simple" icon=false title="Question 3"}
+*A city council member says: "These scientists can't even agree on how much sea level will rise. Why should we spend money on adaptation when they don't know what will happen?"*
+
+*How would you respond? Use concepts from both the lecture and this lab.*
+
+*Replace this text with your answer.*
+:::
+
+
+## Summary
+
+In this lab, you learned to:
+
+1. **Work with NetCDF files** using YAXArrays (indexing, slicing, computing statistics across dimensions)
+2. **Distinguish** between scenario-based (NOAA) and probabilistic (BRICK) approaches to projections
+3. **Compare** projections across emissions pathways (RCPs)
+4. **Interpret** uncertainty ranges and how they grow with planning horizon
+5. **Apply** these data skills to real climate projection data for decision-making
+
+The key insight: **Uncertainty is not a reason to delay action.** Both scenarios and probabilistic projections are tools for making better decisions under uncertainty.
+
+## Submission
+
+1. Push your completed notebook to GitHub
+2. If the formatter creates a pull request, approve it and re-render
+3. Submit the link to your repository on Canvas
+
+## Checklist {.unnumbered}
+
+Before submitting, verify you have completed:
+
+- [ ] **Setup**: All packages load without error
+- [ ] **NetCDF basics**: Answered questions about dimensions and coordinates
+- [ ] **YAXArrays exercise**: Computed 95th percentile for RCP 8.5
+- [ ] **First visualization**: Described observations from initial plot
+- [ ] **NOAA interpretation**: Explained what scenarios mean vs probabilities
+- [ ] **BRICK distributions**: Explained why uncertainty grows with time
+- [ ] **Comparison**: Answered all four comparison questions
+- [ ] **Reflection Q1**: Explained scenarios vs projections
+- [ ] **Reflection Q2**: Discussed different uses for different planning horizons
+- [ ] **Reflection Q3**: Addressed the skeptical council member
+- [ ] **Render**: Re-rendered the notebook to ensure all outputs are current
+
+
+## References
